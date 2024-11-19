@@ -1,0 +1,275 @@
+"O botão não tá funcionando... está deixando o ALv em branco
+"Mesmo testando soluções diversar, não apareceu
+REPORT zmntr_salv_table_03.
+
+TABLES: ekpo,  ekko.
+
+*********************************************************       TELA       ********************************************************************
+
+" Tela de Seleção
+SELECT-OPTIONS: s_werks FOR ekpo-werks,
+                s_ebeln FOR ekko-ebeln.
+PARAMETERS: p_refval TYPE ekpo-netwr.
+
+
+*********************************************************    DECLARAÇÂO   ********************************************************************
+
+"Definição da Estrutura
+TYPES: BEGIN OF ty_alv_data,
+         ebeln     TYPE ekko-ebeln,
+         bukrs     TYPE ekko-bukrs,
+         bedat     TYPE ekko-bedat,
+         waers     TYPE ekko-waers,
+         ebelp     TYPE ekpo-ebelp,
+         matnr     TYPE ekpo-matnr,
+         werks     TYPE ekpo-werks,
+         menge     TYPE ekpo-menge,
+         meins     TYPE ekpo-meins,
+         netwr     TYPE ekpo-netwr,
+         pct_value TYPE p DECIMALS 2,
+         icon      TYPE icon_d,
+       END OF ty_alv_data.
+
+TYPES: ty_tbl_alv_data TYPE TABLE OF ty_alv_data.
+
+*Variáveis Globais
+DATA: lt_data      TYPE TABLE OF ty_alv_data,
+      wa_data      TYPE ty_alv_data,
+      obj_alv      TYPE REF TO cl_salv_table,
+      total_pedido TYPE ekpo-netwr.
+
+*********************************************************     CLASSE     ********************************************************************
+
+CLASS lcl_event_handler DEFINITION.
+  PUBLIC SECTION.
+    " Evento do próprio SAP para cliques na barra de ferramentas
+    METHODS: on_toolbar_button_click FOR EVENT added_function OF cl_salv_events_table
+      IMPORTING e_salv_function,
+      " Evento do próprio SAP para cliques em links
+      on_link_click FOR EVENT link_click OF cl_salv_events_table
+        IMPORTING row column.
+ENDCLASS.
+
+CLASS lcl_event_handler IMPLEMENTATION.
+
+  " Método para manipular cliques no botão da barra de ferramentas
+  METHOD on_toolbar_button_click.
+    DATA: obj_selections   TYPE REF TO cl_salv_selections,   " Objeto para obter seleções do ALV
+          lt_selected_rows TYPE salv_t_row,                   " Tabela para armazenar linhas selecionadas
+          lv_index         TYPE salv_de_row,                  " Índice da linha selecionada
+          lv_netwr         TYPE ekpo-netwr.                   " Valor do item selecionado
+
+    FIELD-SYMBOLS: <fs_data> TYPE ty_alv_data.                " Field-symbol para acessar dados da linha
+
+    " Obter o objeto de seleções do ALV
+    obj_selections = obj_alv->get_selections( ).
+
+    " Obter linhas selecionadas
+    lt_selected_rows = obj_selections->get_selected_rows( ).
+
+    " Verificar se alguma linha foi selecionada
+    IF lt_selected_rows IS INITIAL.
+      " Exibir mensagem informando que nenhuma linha foi selecionada
+      MESSAGE 'Selecione um item' TYPE 'I'.
+    ELSE.
+      " Obter o índice da primeira linha selecionada
+      READ TABLE lt_selected_rows INTO lv_index INDEX 1.
+      " Atribuir dados da linha selecionada ao field-symbol
+      READ TABLE lt_data ASSIGNING <fs_data> INDEX lv_index.
+      " Obter o valor do item da linha selecionada
+      lv_netwr = <fs_data>-netwr.
+      " Exibir mensagem com o valor do item selecionado
+      MESSAGE 'O valor do item é: ' && lv_netwr TYPE 'I'.
+    ENDIF.
+  ENDMETHOD.
+
+  " Método para manipular cliques em links (hotspots)
+  METHOD on_link_click.
+    DATA: lv_ebeln TYPE ekko-ebeln.                          " Número do pedido
+
+    FIELD-SYMBOLS: <fs_data> TYPE ty_alv_data.                " Field-symbol para acessar dados da linha
+
+    " Obter dados da linha clicada
+    READ TABLE lt_data ASSIGNING <fs_data> INDEX row.
+    " Obter o número do pedido da linha clicada
+    lv_ebeln = <fs_data>-ebeln.
+
+    " Chamar a transação ME23N
+    SET PARAMETER ID 'BES' FIELD lv_ebeln.
+    CALL TRANSACTION 'ME23' AND SKIP FIRST SCREEN.
+  ENDMETHOD.
+
+ENDCLASS.
+
+
+*********************************************************       FORM       ********************************************************************
+
+FORM display_alv USING p_lt_data TYPE ty_tbl_alv_data RAISING cx_salv_not_found cx_salv_existing cx_salv_wrong_call cx_salv_msg.
+  TRY.
+      " Instanciar a classe de eventos
+      DATA: obj_event_handler TYPE REF TO lcl_event_handler.
+      "Instância da classe
+      CREATE OBJECT obj_event_handler.
+
+      "Variáveis locais
+      DATA: obj_columns   TYPE REF TO cl_salv_columns_table,
+            obj_column    TYPE REF TO cl_salv_column_table,
+            obj_functions TYPE REF TO cl_salv_functions,
+            obj_display   TYPE REF TO cl_salv_display_settings,
+            obj_events    TYPE REF TO cl_salv_events_table.
+
+      " Criar a instância do ALV
+      cl_salv_table=>factory(
+        IMPORTING
+          r_salv_table = obj_alv
+        CHANGING
+          t_table      = p_lt_data ).
+
+      "Objeto vazio não causa erro
+      IF obj_alv IS INITIAL.
+        MESSAGE 'Erro ao criar a instância do ALV' TYPE 'E'.
+        RETURN.
+      ENDIF.
+
+      " Configurar a exibição zebrada
+      obj_display = obj_alv->get_display_settings( ).
+      obj_display->set_striped_pattern( 'X' ).
+
+      " Obter a referência para a configuração das colunas
+      obj_columns = obj_alv->get_columns( ).
+      IF obj_columns IS INITIAL.
+        MESSAGE 'Erro ao obter a configuração das colunas' TYPE 'E'.
+        RETURN.
+      ENDIF.
+
+      " Adicionar funções específicas à barra de ferramentas
+      obj_functions = obj_alv->get_functions( ).
+      IF obj_functions IS INITIAL.
+        MESSAGE 'Erro ao obter as funções do ALV' TYPE 'E'.
+        RETURN.
+      ENDIF.
+
+      " Habilitar todas as funções padrão para garantir que a barra de ferramentas apareça
+      obj_functions->set_all( abap_true ).
+
+      " Adicionar um botão personalizado
+      "obj_functions->add_function( name = 'MY_BUTTON' text = 'Verificar Item' tooltip = 'Clique para verificar o item' position = if_salv_c_function_position=>right_of_salv_functions ).
+
+      "Atribui as colunas ao ALV e os rótulos
+      obj_column ?= obj_columns->get_column( 'EBELN' ).
+      obj_column->set_short_text( 'Documento' ).
+      obj_column->set_cell_type( if_salv_c_cell_type=>hotspot ).
+
+      obj_column ?= obj_columns->get_column( 'BUKRS' ).
+      obj_column->set_short_text( 'Empresa' ).
+
+      obj_column ?= obj_columns->get_column( 'BEDAT' ).
+      obj_column->set_short_text( 'Data' ).
+
+      obj_column ?= obj_columns->get_column( 'WAERS' ).
+      obj_column->set_short_text( 'Moeda' ).
+
+      obj_column ?= obj_columns->get_column( 'EBELP' ).
+      obj_column->set_short_text( 'Item' ).
+
+      obj_column ?= obj_columns->get_column( 'MATNR' ).
+      obj_column->set_short_text( 'Material' ).
+
+      obj_column ?= obj_columns->get_column( 'WERKS' ).
+      obj_column->set_short_text( 'Centro' ).
+
+      obj_column ?= obj_columns->get_column( 'MENGE' ).
+      obj_column->set_short_text( 'Quantidade' ).
+
+      obj_column ?= obj_columns->get_column( 'MEINS' ).
+      obj_column->set_short_text( 'Unidade' ).
+
+      obj_column ?= obj_columns->get_column( 'NETWR' ).
+      obj_column->set_short_text( CONV #( 'Valor Líquido' ) ).
+
+      obj_column ?= obj_columns->get_column( 'PCT_VALUE' ).
+      obj_column->set_short_text( 'Percentual' ).
+
+      obj_column ?= obj_columns->get_column( 'ICON' ).
+      obj_column->set_icon( abap_true ).
+      obj_column->set_short_text( 'Status' ).
+
+      " Adicionar o evento de clique no botão
+      obj_events = obj_alv->get_event( ).
+      SET HANDLER obj_event_handler->on_toolbar_button_click FOR obj_events.
+
+*      " Adicionar um botão personalizado
+*      obj_functions->add_function( name = 'MY_BUTTON' text = 'Verificar Item' tooltip = 'Clique para verificar o item' position = if_salv_c_function_position=>right_of_salv_functions ).
+
+      " Adicionar o evento para hotspot click para a transação ME23N
+      obj_events = obj_alv->get_event( ).
+      SET HANDLER obj_event_handler->on_link_click FOR obj_events.
+
+      " Exibir o ALV
+      obj_alv->display( ).
+
+      "Caso de erro
+    CATCH cx_salv_not_found cx_salv_existing cx_salv_wrong_call cx_salv_msg INTO DATA(lx_salv).
+      MESSAGE lx_salv->get_text( ) TYPE 'E'.
+  ENDTRY.
+ENDFORM.
+
+
+
+START-OF-SELECTION.
+  TRY.
+      " Seleção dos dados
+      SELECT ekko~ebeln, ekko~bukrs, ekko~bedat, ekko~waers,
+             ekpo~ebelp, ekpo~matnr, ekpo~werks, ekpo~menge, ekpo~meins, ekpo~netwr
+        FROM ekko
+        INNER JOIN ekpo ON ekko~ebeln = ekpo~ebeln
+        INTO CORRESPONDING FIELDS OF TABLE @lt_data
+        WHERE ekpo~werks IN @s_werks AND ekko~ebeln IN @s_ebeln.
+
+      LOOP AT lt_data INTO wa_data.
+        total_pedido = total_pedido + wa_data-netwr.
+        "Cálculo do Pecentual
+
+      ENDLOOP.
+
+      CLEAR wa_data.
+      " Calcular o percentual do valor total do item em relação ao valor de referência
+      LOOP AT lt_data INTO wa_data.
+        IF p_refval > 0.
+          "Cálculo do Pecentual
+          "wa_data-pct_value = ( wa_data-netwr / p_refval ) * 100.
+          wa_data-pct_value = ( wa_data-netwr / total_pedido ) * 100.
+        ENDIF.
+
+        " Definir o ícone baseado na comparação com o valor de referência
+        IF wa_data-netwr > p_refval.
+          "cor do ícone
+          wa_data-icon = icon_green_light.
+        ELSEIF wa_data-netwr < p_refval.
+          wa_data-icon = icon_red_light.
+        ELSE.
+          wa_data-icon = icon_yellow_light.
+        ENDIF.
+
+        "Modificando a  tabela interna com os dados da work-area
+        MODIFY lt_data FROM wa_data.
+      ENDLOOP.
+
+      TRY.
+          "Cria o ALV
+          PERFORM display_alv USING lt_data.
+
+          "Principais erros ocorridos
+        CATCH cx_salv_msg cx_salv_wrong_call cx_salv_existing cx_salv_not_found INTO DATA(lx_salv).
+          " Tratar exceção, talvez exibindo uma mensagem
+          MESSAGE lx_salv->get_text( ) TYPE 'E'.
+
+      ENDTRY.
+
+    CATCH cx_salv_method_not_supported INTO DATA(lx_salv2).
+      MESSAGE lx_salv2->get_text( ) TYPE 'E'.
+
+    CATCH cx_sy_ref_is_initial INTO DATA(lx_salv3).
+      MESSAGE lx_salv3->get_text( ) TYPE 'E'.
+
+  ENDTRY.

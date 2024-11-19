@@ -1,0 +1,167 @@
+*&---------------------------------------------------------------------*
+*& Report ZMNTR_ORDEMDEVENDA_03
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zmntr_ordemdevenda_03.
+"TABLES: vbak, vbap, makt.
+DATA: vbak_wa TYPE vbak,
+      vbap_wa TYPE vbap,
+      makt_wa TYPE makt.
+
+*Bloco de Seleção para os Campos das tabelas
+SELECTION-SCREEN BEGIN OF BLOCK bl1 WITH FRAME TITLE TEXT-001.
+  SELECT-OPTIONS:
+    s_vbeln FOR vbak_wa-vbeln,
+    s_auart FOR vbak_wa-auart,
+    s_matnr FOR vbap_wa-matnr.
+SELECTION-SCREEN END OF BLOCK bl1.
+
+*Tipo de estrutura personalizada
+TYPES: BEGIN OF ty_saida,
+         vbeln TYPE vbak-vbeln,
+         auart TYPE vbak-auart,
+         posnr TYPE vbap-posnr,
+         matnr TYPE vbap-matnr,
+         maktx TYPE makt-maktx,
+         netpr TYPE vbap-netpr,
+         waerk TYPE vbap-waerk,
+       END OF ty_saida.
+
+
+*********************************************************** INNER JOIN
+*DATA: it_saida TYPE TABLE OF ty_saida,
+*      st_saida TYPE ty_saida.
+*
+*START-OF-SELECTION.
+*
+**  SELECT vbak~vbeln,
+**         vbak~auart,
+**         vbap~posnr,
+**         vbap~matnr,
+**         makt~maktx,
+**         vbap~netpr,
+**         vbap~waerk
+**    INTO TABLE @it_saida
+**    FROM vbak
+**    INNER JOIN vbap ON vbak~vbeln = vbap~vbeln
+**    LEFT JOIN makt ON vbap~matnr = makt~matnr
+**    WHERE vbak~vbeln IN @s_vbeln
+**      AND vbak~auart IN @s_auart
+**      AND vbap~matnr IN @s_matnr.
+*  SELECT a~vbeln,
+*         a~auart,
+*         b~posnr,
+*         b~matnr,
+*         c~maktx,
+*         b~netpr,
+*         b~waerk
+*    INTO TABLE @it_saida
+*    FROM vbak AS a
+*    INNER JOIN vbap AS b ON a~vbeln = b~vbeln
+*    LEFT JOIN makt AS c ON b~matnr = c~matnr
+*    WHERE a~vbeln IN @s_vbeln
+*      AND a~auart IN @s_auart
+*      AND b~matnr IN @s_matnr.
+*
+*
+*END-OF-SELECTION.
+*  "write 'a'.
+*
+*  LOOP AT it_saida INTO st_saida.
+*    WRITE: / st_saida-vbeln && '  -  ',
+*           st_saida-auart && '  -  ',
+*           st_saida-posnr && '  -  ',
+*           st_saida-matnr && '  -  ',
+*           st_saida-maktx && '  -  ',
+*           st_saida-netpr && '  -  ',
+*           st_saida-waerk.
+*  ENDLOOP.
+*
+*************************************************************
+
+************************************************************* FOR ALL ENTRIES
+*Variaveis de tabela
+DATA: it_vbak  TYPE TABLE OF vbak,
+      it_vbap  TYPE TABLE OF vbap,
+      it_makt  TYPE TABLE OF makt,
+      it_saida TYPE TABLE OF ty_saida,
+*Variavel de estrutura
+      st_saida TYPE ty_saida.
+
+START-OF-SELECTION.
+
+  "Campos da tabela VBAK na tabela interna correspondente
+  SELECT vbeln auart
+    INTO CORRESPONDING FIELDS OF TABLE it_vbak
+    FROM vbak
+    WHERE vbeln IN s_vbeln
+      AND auart IN s_auart.
+
+  "Limpa Sujeira da Memória
+  IF sy-subrc <> 0.
+    CLEAR it_vbak.
+  ENDIF.
+
+  IF it_vbak IS NOT INITIAL.
+    "Campos da tabela VBAP na tabela interna correspondente
+    SELECT vbeln posnr matnr netpr waerk
+      INTO CORRESPONDING FIELDS OF TABLE it_vbap
+      FROM vbap
+      FOR ALL ENTRIES IN it_vbak
+      WHERE vbeln = it_vbak-vbeln.
+    "AND matnr IN s_matnr.
+
+    IF sy-subrc <> 0.
+      CLEAR it_vbap.
+    ENDIF.
+
+    IF it_vbap IS NOT INITIAL.
+      "Campos da tabela MAKT na tabela interna correspondente
+      SELECT matnr maktx
+        INTO CORRESPONDING FIELDS OF TABLE it_makt
+        FROM makt
+        FOR ALL ENTRIES IN it_vbap
+        WHERE matnr = it_vbap-matnr.
+
+      IF sy-subrc <> 0.
+        CLEAR it_makt.
+      ENDIF.
+
+      LOOP AT it_vbap INTO DATA(st_vbap).
+        "Recupera o registro da tabela interna com a chave correspondente e direciona a uma estrutura (wa)
+        READ TABLE it_vbak WITH KEY vbeln = st_vbap-vbeln INTO DATA(st_vbak).
+        READ TABLE it_makt WITH KEY matnr = st_vbap-matnr INTO DATA(st_makt).
+
+        "colocando todos valores na estrutura de saida
+        st_saida-vbeln = st_vbap-vbeln.
+        st_saida-auart = st_vbak-auart.
+        st_saida-posnr = st_vbap-posnr.
+        st_saida-matnr = st_vbap-matnr.
+        st_saida-maktx = st_makt-maktx.
+        st_saida-netpr = st_vbap-netpr.
+        st_saida-waerk = st_vbap-waerk.
+
+        "inserindo a estrutura na tabela interna com o mesmo tipo
+        APPEND st_saida TO it_saida.
+      ENDLOOP.
+      "ELSE.
+      "MESSAGE 'Registros não encontrados na Tabela VBAP' TYPE 'S'.
+    ENDIF.
+    "ELSE.
+    "MESSAGE 'Registros não encontrados na Tabela VBAK' TYPE 'S'.
+  ENDIF.
+
+END-OF-SELECTION.
+
+  LOOP AT it_saida INTO st_saida.
+    WRITE: / st_saida-vbeln && '  -  ',
+           st_saida-auart && '  -  ',
+           st_saida-posnr && '  -  ',
+           st_saida-matnr && '  -  ',
+           st_saida-maktx && '  -  ',
+           st_saida-netpr && '  -  ',
+           st_saida-waerk.
+  ENDLOOP.
+
+*************************************************************

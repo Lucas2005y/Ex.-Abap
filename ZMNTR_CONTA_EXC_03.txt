@@ -1,0 +1,215 @@
+*&---------------------------------------------------------------------*
+*& Report ZMNTR_CONTA_EXC_03
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zmntr_conta_exc_03.
+
+
+"--------------------------CLASSES--------------------------
+"lcl_conta                               - classe pai, que possui um método a ser redefinido e o número de contas
+"
+"lcl_conta_corrente e lcl_conta_poupanca - são classes filhas
+"                                        - possuem redefinição do mesmo método e atributos e métodos próprios
+"
+"lcl_banco                               - possui uma lista/tabela de referência à lcl_conta
+"                                        - também possui atributos e métodos próprios
+"                                        - os registros criados nas classes filhas estarão aqui
+CLASS lcl_conta DEFINITION.
+  PUBLIC SECTION.
+    CLASS-DATA: num_contas TYPE i VALUE 0.
+    DATA: titular TYPE string,
+          saldo   TYPE decfloat16.
+
+    METHODS: constructor,
+      retorna_saldo RETURNING VALUE(rv_saldo) TYPE decfloat16 RAISING zcx_conta_bloqueada_03.
+    EVENTS conta_criada.
+
+ENDCLASS.
+
+CLASS lcl_conta IMPLEMENTATION.
+  METHOD constructor.
+    "a cada instância, o numero de contas sobe
+    num_contas = num_contas + 1.
+    "o evento dispara o método construtor
+    saldo = 0.
+    titular = ' '.
+    RAISE EVENT conta_criada.
+    "WRITE SENDER.
+    "WRITE 'bbbbbbbbb'.
+  ENDMETHOD.
+
+  METHOD retorna_saldo.
+    IF saldo <= 0.
+      RAISE EXCEPTION TYPE zcx_conta_bloqueada_03. "MESSAGE BLOCKED.
+    ENDIF.
+    rv_saldo = saldo.
+  ENDMETHOD.
+ENDCLASS.
+
+*herda lcl_conta
+CLASS lcl_conta_corrente DEFINITION INHERITING FROM lcl_conta.
+  PUBLIC SECTION.
+    DATA: lim_che TYPE decfloat16. " Limite do cheque especial
+
+    METHODS: constructor IMPORTING im_titular TYPE string
+                                   im_saldo   TYPE decfloat16
+                                   im_lim_che TYPE decfloat16,
+      retorna_saldo REDEFINITION, " Redefine o método retorna_saldo da classe super
+      retorna_limite RETURNING VALUE(rv_lim_che) TYPE decfloat16. "limite do cheque especial
+ENDCLASS.
+
+CLASS lcl_conta_corrente IMPLEMENTATION.
+  METHOD constructor.
+    super->constructor( ). "chama o construtor da classe pai, aumenta o número de contas e define saldo para 0
+    titular = im_titular.
+    saldo = im_saldo.
+    lim_che = im_lim_che.
+  ENDMETHOD.
+
+  METHOD retorna_saldo.
+    "verificando o erro
+    rv_saldo = super->retorna_saldo( ).
+    rv_saldo = saldo + lim_che. "saldo + limite do cheque especial
+  ENDMETHOD.
+
+  METHOD retorna_limite.
+    rv_lim_che = lim_che. "limite do cheque especial
+  ENDMETHOD.
+ENDCLASS.
+
+*herda lcl_conta
+CLASS lcl_conta_poupanca DEFINITION INHERITING FROM lcl_conta.
+  PUBLIC SECTION.
+    DATA: taxa_ju TYPE decfloat16. "taxa de juros
+
+    METHODS: constructor IMPORTING im_titular TYPE string
+                                   im_saldo   TYPE decfloat16
+                                   im_taxa_ju TYPE decfloat16,
+      retorna_saldo REDEFINITION, "redefine o método da classe pai
+      retorna_taxa_ju RETURNING VALUE(rv_taxa_ju) TYPE decfloat16.
+ENDCLASS.
+
+CLASS lcl_conta_poupanca IMPLEMENTATION.
+  METHOD constructor.
+    super->constructor( ). "chama o construtor da classe pai, aumenta o número de contas e define saldo para 0
+    titular = im_titular.
+    saldo = im_saldo.
+    taxa_ju = im_taxa_ju.
+  ENDMETHOD.
+
+  METHOD retorna_saldo.
+    "verificando o erro
+    rv_saldo = super->retorna_saldo( ).
+    rv_saldo = saldo * ( 1 + taxa_ju ). "saldo + taxa de juros
+  ENDMETHOD.
+
+  METHOD retorna_taxa_ju.
+    rv_taxa_ju = taxa_ju. "taxa de juros
+  ENDMETHOD.
+ENDCLASS.
+
+
+CLASS lcl_banco DEFINITION.
+  PUBLIC SECTION.
+    DATA: conta_lista TYPE TABLE OF REF TO lcl_conta. "lista/tabela da classe lcl_conta
+    "recebe o objeto como parâmetro
+    METHODS: constructor,
+      adiciona_conta FOR EVENT conta_criada OF lcl_conta IMPORTING sender,
+      "adiciona_conta IMPORTING im_conta TYPE REF TO lcl_conta, "adiciona uma conta à tabela
+      retorna_saldo_total RETURNING VALUE(rv_saldo_total) TYPE decfloat16, "retorna o saldo de todas as contas somadas
+      retorna_limite_total RETURNING VALUE(rv_limite_total) TYPE decfloat16. "retorna o limite do cheque especial
+ENDCLASS.
+
+CLASS lcl_banco IMPLEMENTATION.
+  METHOD constructor.
+    "passa uma vez
+    SET HANDLER adiciona_conta FOR ALL INSTANCES.
+    "WRITE 'aaaaaaaaaa'.
+  ENDMETHOD.
+
+  METHOD adiciona_conta.
+    "classe chamada pelo sender
+    APPEND sender TO conta_lista. "adiciona o objeto à tabela
+
+    "Faz a chamada do evento na classe lcl_conta
+    "SET HANDLER adiciona_conta FOR ALL INSTANCES.
+    "WRITE 'aaaaaaaaaa'.
+  ENDMETHOD.
+
+  METHOD retorna_saldo_total.
+    DATA: var_saldo_total TYPE decfloat16.
+    var_saldo_total = 0.
+
+    LOOP AT conta_lista INTO DATA(obj_conta).
+      var_saldo_total = var_saldo_total + obj_conta->retorna_saldo( ). "soma o saldo de cada conta por agregação
+    ENDLOOP.
+
+    rv_saldo_total = var_saldo_total. "saldo total
+  ENDMETHOD.
+
+  METHOD retorna_limite_total.
+    DATA: var_limite_total TYPE decfloat16.
+    var_limite_total = 0.
+
+    LOOP AT conta_lista INTO DATA(obj_conta).
+      IF obj_conta IS INSTANCE OF lcl_conta_corrente. "para ver se está na conta corrente, que possui o limite
+        "cast para que obj_conta acesse os métodos de LCL_conta_corrente
+        var_limite_total = var_limite_total + CAST lcl_conta_corrente( obj_conta )->retorna_limite( ). "soma o limite do cheque especial de cada conta corrente
+      ENDIF.
+    ENDLOOP.
+
+    rv_limite_total = var_limite_total. "limite do cheque especial
+  ENDMETHOD.
+ENDCLASS.
+
+
+START-OF-SELECTION.
+  TRY.
+      DATA: obj_banco          TYPE REF TO lcl_banco,
+            obj_conta_corrente TYPE REF TO lcl_conta_corrente,
+            obj_conta_poupanca TYPE REF TO lcl_conta_poupanca,
+            var_saldo_total    TYPE decfloat16,
+            var_limite_total   TYPE decfloat16.
+      "var_saida   TYPE decfloat16.
+
+      "variável estática para número de contas, não precisa de referência
+      WRITE: / 'Número de contas criadas:', lcl_conta=>num_contas.
+
+      "instâncias do objeto
+      CREATE OBJECT obj_banco.
+
+      "instância do objeto com construtor (inserindo valores)
+      CREATE OBJECT obj_conta_corrente
+        EXPORTING
+          im_titular = 'José da Silva'
+          "im_saldo   = 0
+          im_saldo   = '6700'
+          im_lim_che = '2000'.
+
+      "atribui o objeto à tabela do banco
+      "obj_banco->adiciona_conta( obj_conta_corrente )."im_conta = obj_conta_corrente ).
+
+      "instância do objeto com construtor (inserindo valores)
+      CREATE OBJECT obj_conta_poupanca
+        EXPORTING
+          im_titular = 'João dos Santos'
+          im_saldo   = '2500'
+          im_taxa_ju = '0.02'.
+
+      "atribui o objeto à tabela do banco
+      "obj_banco->adiciona_conta( obj_conta_poupanca )."im_conta = obj_conta_poupanca ).
+
+
+      "saídas
+      WRITE: / 'Saldo Conta Corrente:', obj_conta_corrente->retorna_saldo( ) DECIMALS 2. "polimorfismo em "retorna_saldo()"
+      WRITE: / 'Saldo Conta Poupança:', obj_conta_poupanca->retorna_saldo( ) DECIMALS 2. "polimorfismo em "retorna_saldo()"
+
+      var_saldo_total = obj_banco->retorna_saldo_total( ).
+      WRITE: / 'Saldo Total:         ', var_saldo_total DECIMALS 2.
+
+      WRITE: / 'Número de Contas Criadas:', lcl_conta=>num_contas. "variável estática
+
+    CATCH zcx_conta_bloqueada_03 INTO DATA(o_erro).
+      MESSAGE o_erro->get_text( ) TYPE 'E'.
+  ENDTRY.

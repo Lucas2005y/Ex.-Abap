@@ -1,0 +1,24 @@
+REPORT zcalc_fm_03.
+PARAMETERS: val1 TYPE i,
+            val2 TYPE i.
+
+DATA result TYPE decfloat16.
+
+
+CALL FUNCTION 'ZNMCALCULAR_POTENCIA_03'
+  EXPORTING
+    numero    = val1
+    potencial = val2
+  IMPORTING
+    resultado = result
+  EXCEPTIONS
+    subexept  = 1
+    OTHERS    = 2.
+
+IF sy-subrc <> 0.
+* Implement suitable error handling here
+  MESSAGE 'Não foi possível realizar a operação!' TYPE 'E'.
+
+ELSEIF sy-subrc = 0.
+  WRITE result.
+ENDIF.

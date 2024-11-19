@@ -1,0 +1,75 @@
+*&---------------------------------------------------------------------*
+*& Report ZNMTRN03_CALC_SUB
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT znmtrn03_calc_sub.
+
+PARAMETERS: val1     TYPE decfloat16,
+            val2     TYPE decfloat16,
+            operacao TYPE c LENGTH 1.
+
+DATA resultado TYPE decfloat16.
+
+START-OF-SELECTION.
+
+  IF operacao = '/'.
+    IF val2 IS INITIAL.
+      MESSAGE 'Não é possível dividir por 0' TYPE 'E'.
+
+    ELSE.
+      PERFORM divisao USING val1 val2
+                CHANGING resultado.
+      WRITE resultado.
+    ENDIF.
+
+  ELSEIF operacao = '*'.
+    PERFORM multiplicacao USING val1 val2
+                CHANGING resultado.
+    WRITE resultado.
+
+  ELSEIF operacao = '+'.
+    PERFORM soma USING val1 val2
+                CHANGING resultado.
+    WRITE resultado.
+
+  ELSEIF operacao = '-'.
+    PERFORM subtracao USING val1 val2
+                CHANGING resultado.
+    WRITE resultado.
+
+  ENDIF.
+
+
+*SubRotinas
+FORM soma USING val_entrada1 TYPE decfloat16
+                      val_entrada2 TYPE decfloat16
+                CHANGING val_saida TYPE decfloat16.
+
+  val_saida = val_entrada1 + val_entrada2.
+
+ENDFORM.
+
+FORM subtracao USING val_entrada1 TYPE decfloat16
+                      val_entrada2 TYPE decfloat16
+                CHANGING val_saida TYPE decfloat16.
+
+  val_saida = val_entrada1 - val_entrada2.
+
+ENDFORM.
+
+FORM multiplicacao USING val_entrada1 TYPE decfloat16
+                      val_entrada2 TYPE decfloat16
+                CHANGING val_saida TYPE decfloat16.
+
+  val_saida = val_entrada1 * val_entrada2.
+
+ENDFORM.
+
+FORM divisao USING val_entrada1 TYPE decfloat16
+                      val_entrada2 TYPE decfloat16
+                CHANGING val_saida TYPE decfloat16.
+
+  val_saida = val_entrada1 / val_entrada2.
+
+ENDFORM.

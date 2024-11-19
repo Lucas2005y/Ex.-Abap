@@ -1,0 +1,94 @@
+*&---------------------------------------------------------------------*
+*& Report ZMNTR_CLASSES_03
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zmntr_classes_03.
+
+CLASS lcl_conta DEFINITION.
+  PUBLIC SECTION.
+
+    METHODS: constructor,
+      define_atributos IMPORTING im_titular TYPE string
+                                 im_saldo   TYPE decfloat16,
+      retorna_saldo RETURNING VALUE(rv_saldo) TYPE decfloat16,
+      imprime_atributos,
+      retorna_num_contas RETURNING VALUE(rv_num_contas) TYPE i.
+
+  PRIVATE SECTION.
+    "variável que será incrementada toda vez que forem criados novos objetos
+    CLASS-DATA: num_contas TYPE i VALUE 0. " Atributo estático
+    DATA: titular TYPE string,
+          saldo   TYPE decfloat16.
+    "num_contas TYPE i VALUE 0.
+ENDCLASS.
+
+CLASS lcl_conta IMPLEMENTATION.
+  "construtor de instância: toda vez que for criado um novo objeto
+  METHOD constructor.
+    ADD 1 TO lcl_conta=>num_contas.
+    "me->num_contas = me->num_contas + 1.
+    "WRITE me->num_contas.
+    me->titular = ''.
+    me->saldo = 0.
+  ENDMETHOD.
+
+  "importa os valores pelo objeto
+  METHOD define_atributos.
+    me->titular = im_titular.
+    me->saldo = im_saldo.
+  ENDMETHOD.
+
+  "retorna os valores pelo objeto
+  METHOD retorna_saldo.
+    rv_saldo = me->saldo.
+  ENDMETHOD.
+
+  "write dos atributos de conta
+  METHOD imprime_atributos.
+    WRITE: / 'Titular:', me->titular,
+           / 'Saldo:', me->saldo.
+  ENDMETHOD.
+
+  METHOD retorna_num_contas.
+    rv_num_contas = lcl_conta=>num_contas.
+    "rv_num_contas = me->num_contas.
+  ENDMETHOD.
+
+
+
+ENDCLASS.
+
+
+DATA: obj_conta  TYPE REF TO lcl_conta,
+      obj2_conta TYPE REF TO lcl_conta,
+      obj3_conta TYPE REF TO lcl_conta,
+      titular    TYPE string,
+      saldo      TYPE decfloat16,
+      titular2   TYPE string,
+      saldo2     TYPE decfloat16,
+      titular3   TYPE string,
+      saldo3     TYPE decfloat16,
+      num_contas TYPE i.
+
+START-OF-SELECTION.
+
+  WRITE: / 'Número de contas criadas:', num_contas.
+  "CREATE OBJECT obj_conta.
+  obj_conta = NEW lcl_conta( ).
+  "CREATE OBJECT obj2_conta.
+  obj2_conta = NEW #( ).
+  CREATE OBJECT obj3_conta.
+
+  obj_conta->define_atributos( im_titular = 'José Silva' im_saldo = '2000' ).
+  obj_conta->imprime_atributos( ).
+
+  obj2_conta->define_atributos( im_titular = 'João dos Santos' im_saldo = '3300' ).
+  obj2_conta->imprime_atributos( ).
+
+  obj3_conta->define_atributos( im_titular = 'Maria Garcia' im_saldo = '6300' ).
+  obj3_conta->imprime_atributos( ).
+
+
+  num_contas = obj_conta->retorna_num_contas( ).
+  WRITE: / 'Número de contas criadas:', num_contas.
